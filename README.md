@@ -37,6 +37,11 @@ cargo run --bin api
 cargo run --bin worker   # requires Docker for build sandboxes
 ```
 
+> **Note:** `DEFAULT_BUILD_IMAGE` in `.env.example` is a placeholder — point it
+> (or `build_config.image` per submission) at a real contract build image with
+> the pinned Rust toolchain + `stellar-cli`, digest-pinned in production.
+> Without one, builds fail at the image pull with a clear error in the job log.
+
 Submit a verification job:
 
 ```bash
@@ -85,7 +90,7 @@ All configuration is via environment variables (see [.env.example](.env.example)
 
 ## Status / scaffold TODOs
 
-This is the M2 ("Build engine MVP") scaffold. The pipeline is wired end-to-end; the deliberately-stubbed pieces are marked `TODO(Mx)` in code and traceable to the roadmap:
+This is the M2 ("Build engine MVP") scaffold. The pipeline is wired and exercised end-to-end (submit → claim → clone pinned commit → sandboxed docker build → byte-compare → publish, with live SSE log streaming); the deliberately-stubbed pieces are marked `TODO(Mx)` in code and traceable to the roadmap:
 
 - **On-chain Wasm hash resolution** (`common/src/rpc.rs`) — `getLedgerEntries` + XDR decode via `stellar-xdr`/`stellar-strkey`. Until it lands, submissions can carry `build_config.expected_wasm_hash` (dev/test only).
 - **SEP-58 metadata extraction** (`common/src/sep58.rs`) — parse Wasm custom sections and cross-check submitted repo/commit.
