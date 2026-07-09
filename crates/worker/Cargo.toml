@@ -1,0 +1,23 @@
+[package]
+name = "soroban-verify-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "worker"
+path = "src/main.rs"
+
+[dependencies]
+soroban-verify-common = { workspace = true }
+
+anyhow = { workspace = true }
+dotenvy = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
