@@ -17,6 +17,14 @@ pub struct Config {
     pub default_build_image: String,
     pub trusted_image_digests: Vec<String>,
     pub auditable_image_registries: Vec<String>,
+    /// M3: Soroban contract id of the on-chain verification registry. When
+    /// unset together with `attester_secret_key`, the on-chain attestation
+    /// step is a no-op.
+    pub registry_contract_id: Option<String>,
+    /// M3: strkey-encoded (S...) ed25519 secret seed of the attester
+    /// account. **Never logged.** When unset, the on-chain attestation
+    /// step is a no-op.
+    pub attester_secret_key: Option<String>,
 }
 
 impl Config {
@@ -36,6 +44,8 @@ impl Config {
             ),
             trusted_image_digests: list("TRUSTED_IMAGE_DIGESTS"),
             auditable_image_registries: list("AUDITABLE_IMAGE_REGISTRIES"),
+            registry_contract_id: optional("REGISTRY_CONTRACT_ID"),
+            attester_secret_key: optional("ATTESTER_SECRET_KEY"),
         })
     }
 

@@ -1,6 +1,7 @@
 //! `worker` binary — claims verification jobs from the Postgres-backed queue
 //! and runs the rebuild → byte-compare pipeline for each.
 
+mod attest;
 mod compare;
 mod git;
 mod logger;

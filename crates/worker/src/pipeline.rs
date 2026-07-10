@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use soroban_verify_common::config::Config;
 use soroban_verify_common::models::{
-    JobStatus, NewVerification, TrustTier, VerificationJob, VerificationStatus,
+    JobStatus, NewVerification, TrustTier, Verification, VerificationJob, VerificationStatus,
 };
 use soroban_verify_common::rpc::SorobanRpc;
 use soroban_verify_common::sep58;
@@ -13,6 +13,7 @@ use soroban_verify_common::trust::TrustPolicy;
 use soroban_verify_common::{repo, Result};
 use sqlx::PgPool;
 
+use crate::attest::{self, AttestConfig, AttestationOutcome};
 use crate::logger::BuildLog;
 use crate::{compare, git, sandbox};
 
@@ -179,7 +180,7 @@ async fn publish(
     log: &mut BuildLog,
     outcome: Outcome,
 ) -> Result<()> {
-    repo::upsert_verification(
+    let verification = repo::upsert_verification(
         &ctx.pool,
         &NewVerification {
             job_id: job.id,
@@ -192,13 +193,16 @@ async fn publish(
             image_digest: Some(outcome.image),
             trust_tier: outcome.tier,
             status: outcome.status,
-            sep58_mismatch: outcome.sep58_mismatch,
+            attestation_tx_hash: None,
+            attester_address: None,
         },
     )
     .await?;
 
-    // TODO(M3): sign and submit the `attest` transaction to the on-chain
-    // verification registry contract here.
+    // M3 on-chain attestation. Non-fatal: any failure is logged but does
+    // not change the local verification status.
+    submit_onchain_attestation(ctx, job, &verification, log).await;
+
     // TODO(M4): verify SEP-55 signed CI attestations when supplied and record
     // the strengthened provenance on the verification.
 
@@ -221,4 +225,84 @@ async fn fail(
     log.line(format!("verification failed: {reason}")).await;
     repo::finish_job(&ctx.pool, job.id, JobStatus::Failed, None, Some(&reason)).await?;
     Ok(())
+}
+
+/// Resolves the M3 attestation config (or `None` if M3 is disabled) and
+/// submits the `attest` transaction. Records the outcome on the
+/// `verifications` row when submission succeeds. All paths are best-effort:
+/// the function never returns an error, and any failure is logged.
+async fn submit_onchain_attestation(
+    ctx: &WorkerCtx,
+    job: &VerificationJob,
+    verification: &Verification,
+    log: &mut BuildLog,
+) {
+    let cfg = match (
+        ctx.cfg.registry_contract_id.as_deref(),
+        ctx.cfg.attester_secret_key.as_deref(),
+    ) {
+        (Some(registry_contract_id), Some(attester_secret_key)) => AttestConfig {
+            registry_contract_id: registry_contract_id.to_string(),
+            attester_secret_key: attester_secret_key.to_string(),
+        },
+        _ => {
+            log.line(
+                "m3 on-chain attestation skipped (REGISTRY_CONTRACT_ID \
+                      and/or ATTESTER_SECRET_KEY not set)",
+            )
+            .await;
+            return;
+        }
+    };
+
+    let rpc_url = match ctx.cfg.rpc_url(job.network) {
+        Ok(u) => u.to_string(),
+        Err(e) => {
+            log.line(format!(
+                "m3 on-chain attestation skipped (no rpc url for {}): {e}",
+                job.network
+            ))
+            .await;
+            return;
+        }
+    };
+    let rpc = SorobanRpc::new(rpc_url);
+
+    match attest::submit_attestation(verification, Some(&cfg), &rpc).await {
+        AttestationOutcome::Skipped => {}
+        AttestationOutcome::Submitted {
+            tx_hash,
+            attester_address,
+        } => {
+            log.line(format!(
+                "m3 on-chain attestation submitted (attester: {attester_address}, tx: {tx_hash})"
+            ))
+            .await;
+            if let Err(e) = repo::update_attestation(
+                &ctx.pool,
+                &job.contract_id,
+                job.network,
+                &tx_hash,
+                &attester_address,
+            )
+            .await
+            {
+                // Best-effort DB write; a failure here does not invalidate
+                // the on-chain attestation that already happened.
+                log.line(format!(
+                    "m3 on-chain attestation recorded on-chain but failed to update db: {e}"
+                ))
+                .await;
+            }
+        }
+        AttestationOutcome::Failed {
+            attester_address,
+            error,
+        } => {
+            log.line(format!(
+                "m3 on-chain attestation failed (attester: {attester_address}): {error}"
+            ))
+            .await;
+        }
+    }
 }
