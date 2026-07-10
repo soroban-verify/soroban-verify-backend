@@ -271,6 +271,12 @@ pub struct Verification {
     pub image_digest: Option<String>,
     pub trust_tier: TrustTier,
     pub status: VerificationStatus,
+    /// Result of cross-checking the SEP-58 `source_repo` / `commit_sha`
+    /// embedded in the on-chain Wasm against the submitter's claim.
+    /// `None` = could not determine (e.g. on-chain Wasm bytes not fetched,
+    /// or no `contractmetav0` section). `Some(true)` = mismatch. `Some(false)`
+    /// = values agreed.
+    pub sep58_mismatch: Option<bool>,
     pub verified_at: DateTime<Utc>,
 }
 
@@ -286,6 +292,7 @@ pub struct NewVerification {
     pub image_digest: Option<String>,
     pub trust_tier: TrustTier,
     pub status: VerificationStatus,
+    pub sep58_mismatch: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]

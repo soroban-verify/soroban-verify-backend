@@ -8,6 +8,7 @@ use soroban_verify_common::models::{
     JobStatus, NewVerification, TrustTier, VerificationJob, VerificationStatus,
 };
 use soroban_verify_common::rpc::SorobanRpc;
+use soroban_verify_common::sep58;
 use soroban_verify_common::trust::TrustPolicy;
 use soroban_verify_common::{repo, Result};
 use sqlx::PgPool;
@@ -27,6 +28,10 @@ struct Outcome {
     onchain_hash: String,
     rebuilt_hash: String,
     image: String,
+    /// Result of the SEP-58 metadata cross-check. `None` when the cross-check
+    /// could not be performed (on-chain Wasm bytes unavailable, or the
+    /// contract embedded no `contractmetav0` section).
+    sep58_mismatch: Option<bool>,
 }
 
 /// Runs one claimed job to completion, always leaving it in a terminal state.
@@ -65,8 +70,12 @@ async fn execute(ctx: &WorkerCtx, job: &VerificationJob, log: &mut BuildLog) -> 
         .tempdir_in(&ctx.cfg.build_scratch_dir)?;
     let src = git::clone_at_commit(&job.repo_url, &job.commit_sha, workdir.path()).await?;
 
-    // TODO(M2): read SEP-58 metadata from the on-chain Wasm and cross-check
-    // it against the submitted repo/commit (soroban_verify_common::sep58).
+    // SEP-58 metadata cross-check: fetch the on-chain Wasm bytes (when the
+    // ledger fetch is implemented) and compare the embedded source_repo /
+    // commit_sha against the submitter's claim. A failure to fetch the bytes
+    // is logged at info level and recorded as "unknown" — it must not fail
+    // the build, per the issue's acceptance criteria.
+    let sep58_mismatch = check_sep58_metadata(ctx, job, log).await;
 
     let build_config = &job.build_config.0;
     let image = build_config
@@ -93,7 +102,64 @@ async fn execute(ctx: &WorkerCtx, job: &VerificationJob, log: &mut BuildLog) -> 
         onchain_hash,
         rebuilt_hash,
         image,
+        sep58_mismatch,
     })
+}
+
+/// Fetches the on-chain Wasm (when available) and cross-checks its SEP-58
+/// metadata against the submission. Returns `None` if the cross-check could
+/// not be performed (on-chain Wasm unavailable, or no metadata section) and
+/// `Some(true)`/`Some(false)` otherwise.
+async fn check_sep58_metadata(
+    ctx: &WorkerCtx,
+    job: &VerificationJob,
+    log: &mut BuildLog,
+) -> Option<bool> {
+    let rpc_url = match ctx.cfg.rpc_url(job.network) {
+        Ok(u) => u,
+        Err(e) => {
+            log.line(format!(
+                "sep-58 cross-check skipped (no rpc url for {}): {e}",
+                job.network
+            ))
+            .await;
+            return None;
+        }
+    };
+    let rpc = SorobanRpc::new(rpc_url);
+    let wasm_bytes = match rpc.fetch_contract_wasm(&job.contract_id).await {
+        Ok(b) => b,
+        Err(e) => {
+            // Expected until the M2 on-chain Wasm fetch is implemented;
+            // a missing/incomplete on-chain fetch is recorded as "unknown"
+            // provenance, not as a hard failure.
+            log.line(format!(
+                "sep-58 cross-check skipped (on-chain wasm not yet available): {e}"
+            ))
+            .await;
+            return None;
+        }
+    };
+
+    let embedded = sep58::resolve_from_wasm(&wasm_bytes);
+    let result = sep58::cross_check(embedded.as_ref(), &job.repo_url, &job.commit_sha);
+    match result {
+        Some(true) => {
+            log.line(
+                "sep-58 cross-check FAILED: embedded source_repo/commit_sha do not match submission",
+            )
+            .await;
+        }
+        Some(false) => {
+            log.line("sep-58 cross-check passed: embedded metadata matches submission")
+                .await;
+        }
+        None => {
+            log.line("sep-58 cross-check skipped: contract did not embed a contractmetav0 section")
+                .await;
+        }
+    }
+    result
 }
 
 /// The hash the rebuild must reproduce. Until getLedgerEntries + XDR decoding
@@ -126,6 +192,7 @@ async fn publish(
             image_digest: Some(outcome.image),
             trust_tier: outcome.tier,
             status: outcome.status,
+            sep58_mismatch: outcome.sep58_mismatch,
         },
     )
     .await?;

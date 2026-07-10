@@ -119,8 +119,8 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
         r#"
         INSERT INTO verifications
             (job_id, contract_id, network, repo_url, commit_sha, wasm_hash,
-             rebuilt_wasm_hash, image_digest, trust_tier, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             rebuilt_wasm_hash, image_digest, trust_tier, status, sep58_mismatch)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (contract_id, network) DO UPDATE SET
             job_id = EXCLUDED.job_id,
             repo_url = EXCLUDED.repo_url,
@@ -130,6 +130,7 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
             image_digest = EXCLUDED.image_digest,
             trust_tier = EXCLUDED.trust_tier,
             status = EXCLUDED.status,
+            sep58_mismatch = EXCLUDED.sep58_mismatch,
             verified_at = now()
         RETURNING *
         "#,
@@ -144,6 +145,7 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
     .bind(&v.image_digest)
     .bind(v.trust_tier)
     .bind(v.status)
+    .bind(v.sep58_mismatch)
     .fetch_one(pool)
     .await?;
     Ok(row)

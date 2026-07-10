@@ -101,4 +101,27 @@ impl SorobanRpc {
                 .into(),
         ))
     }
+
+    /// Fetches the full Wasm bytes installed for `contract_id`.
+    ///
+    /// Used by the SEP-58 metadata cross-check (`crate::sep58::resolve_from_wasm`):
+    /// once the bytes are in hand we can iterate the Wasm's `contractmetav0`
+    /// custom section and compare the embedded `source_repo` / `commit_sha`
+    /// against the submitter's claim.
+    ///
+    /// TODO(M2): implement via the same `getLedgerEntries` XDR plumbing as
+    /// `contract_wasm_hash` — once the contract instance is decoded, the
+    /// `ScContractInstance::executable` variant is `Wasm` and carries the
+    /// Wasm hash; the actual bytes then need to be fetched via a second
+    /// ledger entry (`ContractCodeEntry`) keyed by that hash. Until that
+    /// lands, callers must treat the cross-check as "unknown" rather than
+    /// as "mismatch".
+    pub async fn fetch_contract_wasm(&self, contract_id: &str) -> Result<Vec<u8>> {
+        let _ = contract_id;
+        Err(Error::Rpc(
+            "on-chain wasm bytes fetch is not implemented yet (M2: \
+             getLedgerEntries + ContractCodeEntry)"
+                .into(),
+        ))
+    }
 }
