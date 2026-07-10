@@ -195,6 +195,7 @@ async fn publish(
             status: outcome.status,
             attestation_tx_hash: None,
             attester_address: None,
+            sep58_mismatch: outcome.sep58_mismatch,
         },
     )
     .await?;

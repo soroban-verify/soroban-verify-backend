@@ -201,6 +201,7 @@ mod tests {
             status: VerificationStatus::Verified,
             attestation_tx_hash: None,
             attester_address: None,
+            sep58_mismatch: None,
             verified_at: chrono::Utc::now(),
         }
     }
