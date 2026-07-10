@@ -278,6 +278,12 @@ pub struct Verification {
     /// Stellar strkey G-address of the attester that produced the on-chain
     /// attestation, derived from `ATTESTER_SECRET_KEY`.
     pub attester_address: Option<String>,
+    /// Result of the SEP-58 metadata cross-check against the on-chain Wasm
+    /// (issue #2). `None` when the cross-check could not be performed
+    /// (on-chain bytes unavailable, or no `contractmetav0` section).
+    /// `Some(true)` = mismatch between embedded and submitted
+    /// `source_repo`/`commit_sha`. `Some(false)` = values agreed.
+    pub sep58_mismatch: Option<bool>,
     pub verified_at: DateTime<Utc>,
 }
 
@@ -297,6 +303,9 @@ pub struct NewVerification {
     /// follow-up `update_attestation` call after a successful M3 submission.
     pub attestation_tx_hash: Option<String>,
     pub attester_address: Option<String>,
+    /// SEP-58 cross-check result, threaded through from the pipeline. `None`
+    /// means the cross-check could not be performed (see `Verification`).
+    pub sep58_mismatch: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]
