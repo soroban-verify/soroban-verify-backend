@@ -271,6 +271,13 @@ pub struct Verification {
     pub image_digest: Option<String>,
     pub trust_tier: TrustTier,
     pub status: VerificationStatus,
+    /// Hash of the on-chain `attest` transaction submitted to the verification
+    /// registry contract (M3). NULL until submission succeeds (or if M3 is
+    /// disabled via missing `REGISTRY_CONTRACT_ID` / `ATTESTER_SECRET_KEY`).
+    pub attestation_tx_hash: Option<String>,
+    /// Stellar strkey G-address of the attester that produced the on-chain
+    /// attestation, derived from `ATTESTER_SECRET_KEY`.
+    pub attester_address: Option<String>,
     pub verified_at: DateTime<Utc>,
 }
 
@@ -286,6 +293,10 @@ pub struct NewVerification {
     pub image_digest: Option<String>,
     pub trust_tier: TrustTier,
     pub status: VerificationStatus,
+    /// Initially `None` for the first `upsert_verification`; populated by a
+    /// follow-up `update_attestation` call after a successful M3 submission.
+    pub attestation_tx_hash: Option<String>,
+    pub attester_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]

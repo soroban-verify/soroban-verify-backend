@@ -119,8 +119,9 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
         r#"
         INSERT INTO verifications
             (job_id, contract_id, network, repo_url, commit_sha, wasm_hash,
-             rebuilt_wasm_hash, image_digest, trust_tier, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             rebuilt_wasm_hash, image_digest, trust_tier, status,
+             attestation_tx_hash, attester_address)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (contract_id, network) DO UPDATE SET
             job_id = EXCLUDED.job_id,
             repo_url = EXCLUDED.repo_url,
@@ -130,6 +131,8 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
             image_digest = EXCLUDED.image_digest,
             trust_tier = EXCLUDED.trust_tier,
             status = EXCLUDED.status,
+            attestation_tx_hash = EXCLUDED.attestation_tx_hash,
+            attester_address = EXCLUDED.attester_address,
             verified_at = now()
         RETURNING *
         "#,
@@ -144,9 +147,38 @@ pub async fn upsert_verification(pool: &PgPool, v: &NewVerification) -> Result<V
     .bind(&v.image_digest)
     .bind(v.trust_tier)
     .bind(v.status)
+    .bind(v.attestation_tx_hash.as_deref())
+    .bind(v.attester_address.as_deref())
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+/// Records the outcome of an M3 on-chain `attest` submission. Called after a
+/// successful `sendTransaction` RPC; the canonical verification row is
+/// updated in place so the audit trail reflects the tx hash and attester.
+pub async fn update_attestation(
+    pool: &PgPool,
+    contract_id: &str,
+    network: Network,
+    attestation_tx_hash: &str,
+    attester_address: &str,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE verifications
+        SET attestation_tx_hash = $1,
+            attester_address = $2
+        WHERE contract_id = $3 AND network = $4
+        "#,
+    )
+    .bind(attestation_tx_hash)
+    .bind(attester_address)
+    .bind(contract_id)
+    .bind(network)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub async fn verification_for_contract(
