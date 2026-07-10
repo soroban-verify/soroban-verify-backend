@@ -38,6 +38,18 @@ pub struct LatestLedger {
     pub protocol_version: u32,
 }
 
+/// Subset of the `sendTransaction` response we care about. `status` is one
+/// of `PENDING` / `DUPLICATE` / `TRY_AGAIN_LATER` / `ERROR` per the Soroban
+/// RPC spec; `hash` is the on-chain transaction hash (hex). The full
+/// `errorResultXdr` (base64 XDR) is preserved for diagnostics.
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SendTransactionResult {
+    pub status: String,
+    pub hash: String,
+    pub error_result_xdr: Option<String>,
+}
+
 impl SorobanRpc {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
@@ -100,5 +112,16 @@ impl SorobanRpc {
              getLedgerEntries + XDR decode)"
                 .into(),
         ))
+    }
+
+    /// Submits a signed transaction envelope (base64 XDR) to the Soroban
+    /// network via the `sendTransaction` RPC method. The envelope must be a
+    /// fully-signed `TransactionEnvelope`; this method only handles transport.
+    ///
+    /// Used by the M3 on-chain attestation step to submit the `attest` call
+    /// to the verification registry contract.
+    pub async fn send_transaction(&self, tx_envelope_xdr: &str) -> Result<SendTransactionResult> {
+        let params = serde_json::json!({ "transaction": tx_envelope_xdr });
+        self.call("sendTransaction", Some(params)).await
     }
 }
