@@ -114,6 +114,25 @@ impl SorobanRpc {
         ))
     }
 
+    /// Fetches the compiled Wasm bytes for `contract_id` from the network.
+    ///
+    /// TODO(M2): implement via `getLedgerEntries`:
+    ///   1. strkey-decode the contract id (stellar-strkey crate),
+    ///   2. build the XDR `LedgerKey::ContractCode` for the contract,
+    ///   3. fetch + base64/XDR-decode the `ContractCodeEntry` and return
+    ///      its raw Wasm bytes.
+    ///
+    /// Until then, the SEP-58 metadata cross-check downstream treats the
+    /// missing bytes as "unknown provenance", never as a hard failure.
+    pub async fn fetch_contract_wasm(&self, contract_id: &str) -> Result<Vec<u8>> {
+        let _ = contract_id;
+        Err(Error::Rpc(
+            "on-chain wasm fetch is not implemented yet (M2: \
+             getLedgerEntries + ContractCodeEntry fetch)"
+                .into(),
+        ))
+    }
+
     /// Submits a signed transaction envelope (base64 XDR) to the Soroban
     /// network via the `sendTransaction` RPC method. The envelope must be a
     /// fully-signed `TransactionEnvelope`; this method only handles transport.
