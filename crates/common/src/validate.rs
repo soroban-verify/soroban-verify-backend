@@ -4,19 +4,29 @@
 use crate::error::{Error, Result};
 
 /// Soroban contract IDs are 56-char C-prefixed strkeys (base32: A-Z, 2-7).
+///
+/// Validates the full CRC-16 checksum via `stellar-strkey`. A fast-path
+/// pre-filter (length + char set) rejects obviously invalid inputs before
+/// the checksum check.
 pub fn contract_id(s: &str) -> Result<()> {
-    let valid = s.len() == 56
-        && s.starts_with('C')
-        && s.bytes()
-            .all(|b| b.is_ascii_uppercase() || (b'2'..=b'7').contains(&b));
-    if valid {
-        Ok(())
-    } else {
-        Err(Error::InvalidInput(format!(
+    // Fast path: length + character set pre-filter.
+    if s.len() != 56
+        || !s.starts_with('C')
+        || !s.bytes().all(|b| b.is_ascii_uppercase() || (b'2'..=b'7').contains(&b))
+    {
+        return Err(Error::InvalidInput(format!(
             "invalid contract id: {s} (expected 56-char C… strkey)"
-        )))
+        )));
     }
-    // TODO(M2): full strkey checksum validation via the stellar-strkey crate.
+
+    // Full CRC-16 checksum validation via stellar-strkey.
+    stellar_strkey::Contract::from_string(s).map_err(|e| {
+        Error::InvalidInput(format!(
+            "invalid contract id: {s} (checksum validation failed: {e})"
+        ))
+    })?;
+
+    Ok(())
 }
 
 /// Full 40-char hex commit SHA. Pinning to an exact commit (not a branch or
@@ -68,6 +78,13 @@ mod tests {
         assert!(contract_id("GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE").is_err());
         assert!(contract_id("CA3D5KRYM6CB7OWQ").is_err());
         assert!(contract_id("ca3d5krym6cb7owq6twyrr3z4t7gnzlkerynzgga5soaopify6yqgaxe").is_err());
+    }
+
+    #[test]
+    fn rejects_checksum_invalid_contract_id() {
+        // A valid 56-char C-prefixed strkey with one character flipped to
+        // break the CRC-16 checksum.
+        assert!(contract_id("CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXF").is_err());
     }
 
     #[test]
