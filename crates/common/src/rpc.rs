@@ -120,8 +120,7 @@ impl SorobanRpc {
 
         // Call getLedgerEntries
         let params = serde_json::json!({ "keys": [key_b64] });
-        let response: serde_json::Value =
-            self.call("getLedgerEntries", Some(params)).await?;
+        let response: serde_json::Value = self.call("getLedgerEntries", Some(params)).await?;
 
         // Extract first entry
         let entry = response["entries"]
@@ -134,29 +133,22 @@ impl SorobanRpc {
             .ok_or_else(|| Error::Rpc("missing xdr field in response entry".into()))?;
 
         // Decode the LedgerEntry XDR
-        let ledger_entry =
-            stellar_xdr::LedgerEntry::from_xdr_base64(entry_xdr, Limits::none())
-                .map_err(|e| Error::Rpc(format!("XDR decoding failed: {e}")))?;
+        let ledger_entry = stellar_xdr::LedgerEntry::from_xdr_base64(entry_xdr, Limits::none())
+            .map_err(|e| Error::Rpc(format!("XDR decoding failed: {e}")))?;
 
         // Extract Wasm hash from the ContractExecutable inside the contract instance
         match &ledger_entry.data {
-            stellar_xdr::LedgerEntryData::ContractData(data) => {
-                match &data.val {
-                    stellar_xdr::ScVal::ContractInstance(instance) => {
-                        match &instance.executable {
-                            stellar_xdr::ContractExecutable::Wasm(hash) => {
-                                Ok(hex::encode(hash.0))
-                            }
-                            other => Err(Error::Rpc(format!(
-                                "contract executable is not Wasm: {other:?}"
-                            ))),
-                        }
-                    }
+            stellar_xdr::LedgerEntryData::ContractData(data) => match &data.val {
+                stellar_xdr::ScVal::ContractInstance(instance) => match &instance.executable {
+                    stellar_xdr::ContractExecutable::Wasm(hash) => Ok(hex::encode(hash.0)),
                     other => Err(Error::Rpc(format!(
-                        "unexpected contract data value type: {other:?}"
+                        "contract executable is not Wasm: {other:?}"
                     ))),
-                }
-            }
+                },
+                other => Err(Error::Rpc(format!(
+                    "unexpected contract data value type: {other:?}"
+                ))),
+            },
             other => Err(Error::Rpc(format!(
                 "unexpected ledger entry type (expected ContractData): {other:?}"
             ))),
@@ -178,7 +170,9 @@ impl SorobanRpc {
         let wasm_hash_bytes = hex::decode(&wasm_hash_hex)
             .map_err(|e| Error::Rpc(format!("invalid wasm hash hex: {e}")))?;
 
-        let hash_arr: [u8; 32] = wasm_hash_bytes.as_slice().try_into()
+        let hash_arr: [u8; 32] = wasm_hash_bytes
+            .as_slice()
+            .try_into()
             .map_err(|_| Error::Rpc("wasm hash is not 32 bytes".into()))?;
 
         // Build LedgerKey::ContractCode for the Wasm code entry
@@ -191,8 +185,7 @@ impl SorobanRpc {
 
         // Call getLedgerEntries
         let params = serde_json::json!({ "keys": [key_b64] });
-        let response: serde_json::Value =
-            self.call("getLedgerEntries", Some(params)).await?;
+        let response: serde_json::Value = self.call("getLedgerEntries", Some(params)).await?;
 
         // Extract entry
         let entry = response["entries"]
@@ -205,9 +198,8 @@ impl SorobanRpc {
             .ok_or_else(|| Error::Rpc("missing xdr field in response entry".into()))?;
 
         // Decode the LedgerEntry XDR
-        let ledger_entry =
-            stellar_xdr::LedgerEntry::from_xdr_base64(entry_xdr, Limits::none())
-                .map_err(|e| Error::Rpc(format!("XDR decoding failed: {e}")))?;
+        let ledger_entry = stellar_xdr::LedgerEntry::from_xdr_base64(entry_xdr, Limits::none())
+            .map_err(|e| Error::Rpc(format!("XDR decoding failed: {e}")))?;
 
         // Extract Wasm bytes from the ContractCodeEntry
         match &ledger_entry.data {
@@ -291,7 +283,9 @@ mod tests {
 
     #[test]
     fn test_contract_wasm_hash_errors_on_invalid_strkey() {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
         let rpc = SorobanRpc::new("https://example.com/rpc");
         let result = rt.block_on(rpc.contract_wasm_hash("not-a-valid-strkey"));
         assert!(result.is_err());
@@ -311,9 +305,9 @@ mod tests {
             .build()
             .unwrap();
         let rpc = SorobanRpc::new("http://127.0.0.1:1");
-        let result = rt.block_on(rpc.contract_wasm_hash(
-            "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
-        ));
+        let result = rt.block_on(
+            rpc.contract_wasm_hash("CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE"),
+        );
         assert!(result.is_err());
         let err = format!("{}", result.unwrap_err());
         assert!(

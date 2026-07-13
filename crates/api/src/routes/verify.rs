@@ -44,20 +44,24 @@ pub async fn submit(
 
     // ── Confirm contract exists on-chain ──────────────────────────────
     let rpc = st.rpc(&req.network)?;
-    let _ = rpc.contract_wasm_hash(&req.contract_id).await.map_err(|e| {
-        // Map "contract not found" into a 404 response; surface all other
-        // errors as-is via the IntoResponse mapping (BAD_GATEWAY for
-        // Rpc/Http errors, INTERNAL_SERVER_ERROR for everything else).
-        let not_found = matches!(&e, Error::Rpc(msg) if msg.contains("contract not found on-chain"));
-        if not_found {
-            ApiError::not_found(format!(
-                "contract {} not found on {}",
-                req.contract_id, req.network,
-            ))
-        } else {
-            ApiError(e)
-        }
-    })?;
+    let _ = rpc
+        .contract_wasm_hash(&req.contract_id)
+        .await
+        .map_err(|e| {
+            // Map "contract not found" into a 404 response; surface all other
+            // errors as-is via the IntoResponse mapping (BAD_GATEWAY for
+            // Rpc/Http errors, INTERNAL_SERVER_ERROR for everything else).
+            let not_found =
+                matches!(&e, Error::Rpc(msg) if msg.contains("contract not found on-chain"));
+            if not_found {
+                ApiError::not_found(format!(
+                    "contract {} not found on {}",
+                    req.contract_id, req.network,
+                ))
+            } else {
+                ApiError(e)
+            }
+        })?;
 
     // ── Pre-fill build_config from SEP-58 metadata ───────────────────
     let mut build_config = req.build_config;

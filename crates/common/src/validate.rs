@@ -12,7 +12,9 @@ pub fn contract_id(s: &str) -> Result<()> {
     // Fast path: length + character set pre-filter.
     if s.len() != 56
         || !s.starts_with('C')
-        || !s.bytes().all(|b| b.is_ascii_uppercase() || (b'2'..=b'7').contains(&b))
+        || !s
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || (b'2'..=b'7').contains(&b))
     {
         return Err(Error::InvalidInput(format!(
             "invalid contract id: {s} (expected 56-char C… strkey)"
