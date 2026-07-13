@@ -6,11 +6,17 @@ license.workspace = true
 
 [dependencies]
 chrono = { workspace = true }
+hex = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
+stellar-strkey = "0.0.18"
+stellar-xdr = { version = "27", features = ["base64"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 wasmparser = "0.219"
+
+[dev-dependencies]
+tokio = { workspace = true }
