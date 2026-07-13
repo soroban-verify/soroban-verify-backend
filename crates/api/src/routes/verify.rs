@@ -11,7 +11,7 @@ use futures::Stream;
 use serde::Deserialize;
 use serde_json::json;
 use soroban_verify_common::models::{BuildConfig, Network, NewJob, VerificationJob};
-use soroban_verify_common::{repo, validate};
+use soroban_verify_common::{repo, sep58, validate, Error};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -40,9 +40,43 @@ pub async fn submit(
         validate::wasm_hash(h)?;
     }
 
-    // TODO(M2): confirm the contract exists on-chain (SorobanRpc) and pre-fill
-    // build_config from embedded SEP-58 metadata before enqueueing.
     // TODO(M3): rate limiting / dedup of in-flight jobs per (contract, commit).
+
+    // ── Confirm contract exists on-chain ──────────────────────────────
+    let rpc = st.rpc(&req.network)?;
+    let _ = rpc.contract_wasm_hash(&req.contract_id).await.map_err(|e| {
+        // Map "contract not found" into a 404 response; surface all other
+        // errors as-is via the IntoResponse mapping (BAD_GATEWAY for
+        // Rpc/Http errors, INTERNAL_SERVER_ERROR for everything else).
+        let not_found = matches!(&e, Error::Rpc(msg) if msg.contains("contract not found on-chain"));
+        if not_found {
+            ApiError::not_found(format!(
+                "contract {} not found on {}",
+                req.contract_id, req.network,
+            ))
+        } else {
+            ApiError(e)
+        }
+    })?;
+
+    // ── Pre-fill build_config from SEP-58 metadata ───────────────────
+    let mut build_config = req.build_config;
+
+    // Fetch the on-chain Wasm bytes to extract embedded SEP-58 metadata.
+    // Failing gracefully: if the fetch fails (e.g. wasm bytes not yet
+    // indexed), we proceed with the user-supplied build_config alone.
+    if let Ok(wasm_bytes) = rpc.fetch_contract_wasm(&req.contract_id).await {
+        if let Some(meta) = sep58::resolve_from_wasm(&wasm_bytes) {
+            // Pre-fill image from SEP-58 metadata if not explicitly provided.
+            if build_config.image.is_none() {
+                build_config.image = meta.build_image;
+            }
+            // Other SEP-58 fields (rust_version, soroban_cli_version) are
+            // informational and not currently mapped to BuildConfig fields,
+            // but the cross-check mechanism uses source_repo and commit_sha
+            // downstream in the worker pipeline.
+        }
+    }
 
     let job = repo::insert_job(
         &st.pool,
@@ -51,7 +85,7 @@ pub async fn submit(
             network: req.network,
             repo_url: req.repo_url,
             commit_sha: req.commit_sha,
-            build_config: req.build_config,
+            build_config,
         },
     )
     .await?;
